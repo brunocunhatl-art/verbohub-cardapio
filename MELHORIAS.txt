@@ -1,0 +1,10 @@
+
+MELHORIAS APLICADAS:
+- Layout mobile responsivo
+- Fontes maiores no celular
+- Cards em largura total
+- Botões maiores
+- Categorias estilo iFood
+- Carrinho melhorado
+- Som alterado de bipe para campainha/ringtone curto
+- Mantida sincronização Supabase
