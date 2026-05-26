@@ -1,0 +1,9 @@
+Versão mobile-first real:
+- Adicionado meta viewport correto para celular.
+- Fontes, botões e cards aumentados.
+- Header e banner compactados no celular.
+- Categorias sticky maiores e fáceis de tocar.
+- Carrinho fixo embaixo no celular.
+- Modal de produto em formato bottom sheet.
+- Som pedido.wav trocado por campainha/ringtone curto.
+- Build testado com npm install e npm run build.
