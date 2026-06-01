@@ -47,6 +47,116 @@ function matchMenuItemByName(name){
   return flatMenu.find(p => normalizeName(p.name) === key) || flatMenu.find(p => key.includes(normalizeName(p.name)) || normalizeName(p.name).includes(key));
 }
 
+
+
+function imageForProduct(item){
+  if(item?.image) return item.image;
+  if(item?.id && IMAGE_BY_ID[item.id]) return IMAGE_BY_ID[item.id];
+  const key = normalizeName(item?.name || '');
+  const cat = normalizeName(item?.category || item?.category_name || '');
+  const matched = matchMenuItemByName(item?.name);
+  if(matched?.image) return matched.image;
+  if(key.includes('egg') && key.includes('bacon')) return '/products/x-egg-bacon.jpg';
+  if(key.includes('duplo') || key.includes('bbq')) return '/products/duplo-bacon-bbq.jpeg';
+  if(key.includes('x tudo') || key.includes('xtudo')) return '/products/x-tudo.jpg';
+  if(key.includes('x bacon') || (key.includes('bacon') && cat.includes('burger'))) return '/products/x-bacon.jpeg';
+  if(key.includes('salada')) return '/products/x-salada.jpg';
+  if(key.includes('x burger') || key.includes('x burguer') || cat.includes('burger')) return '/products/x-burguer.jpg';
+  if(key.includes('cuscuz') && key.includes('premium')) return '/products/cuscuz-premium.png';
+  if(key.includes('cuscuz')) return '/products/cuscuz-base.jpg';
+  if(cat.includes('tapioca') && cat.includes('doce')){
+    if(key.includes('nutella')) return '/products/tapioca-nutella.jpg';
+    if(key.includes('leite') || key.includes('coco')) return '/products/tapioca-leite-condensado.jpg';
+    if(key.includes('churros')) return '/products/tapioca-churros.jpeg';
+    if(key.includes('romeu') || key.includes('julieta')) return '/products/tapioca-romeu-julieta.jpg';
+  }
+  if(cat.includes('tapioca')) return '/products/tapiocas-salgadas.jpeg';
+  if(key.includes('coca') && key.includes('600')) return '/products/coca-cola-600ml.jpg';
+  if(key.includes('coca') && key.includes('1l')) return '/products/coca-cola-1l.jpg';
+  if(key.includes('agua')) return '/products/aguas.jpg';
+  if(cat.includes('refrigerante') || key.includes('guarana') || key.includes('fanta')) return '/products/refrigerantes-lata.jpg';
+  if(cat.includes('suco')) return '/products/sucos.jpeg';
+  if(cat.includes('detox') || key.includes('detox')) return '/products/detox.jpeg';
+  if(cat.includes('milk') || key.includes('milk')) return '/products/milkshakes.jpg';
+  return '/logo-verbo-hub.png';
+}
+
+function categoryAddon(categoryId, categoryName){
+  const id = normalizeName(categoryId || '');
+  const name = normalizeName(categoryName || '');
+  if(id.includes('burger') || name.includes('burger')) return 'burger';
+  if(id.includes('cuscuz') || name.includes('cuscuz')) return 'cuscuz';
+  if((id.includes('tapioca') || name.includes('tapioca')) && (id.includes('doce') || name.includes('doce'))) return 'sweet';
+  if(id.includes('tapioca') || name.includes('tapioca')) return 'savory';
+  return null;
+}
+
+function buildCategoriesFromMenuItems(rows){
+  const byCat = new Map();
+  (rows||[]).filter(r => r.active !== false).forEach((row, idx) => {
+    const id = row.category_id || row.cat || normalizeName(row.category_name || row.category || 'cardapio').replaceAll(' ','-') || 'cardapio';
+    const name = row.category_name || row.category || row.cat || 'Cardápio';
+    if(!byCat.has(id)) byCat.set(id, { id, name, icon: row.icon || '🍽️', addons: row.addons ?? categoryAddon(id,name), items: [] });
+    const cat = byCat.get(id);
+    cat.items.push({
+      id: String(row.id || row.name || idx),
+      name: row.name || 'Produto',
+      price: Number(row.price)||0,
+      desc: row.description || row.desc || 'Produto Verbo Hub feito com carinho.',
+      category: id,
+      tags: Array.isArray(row.tags) ? row.tags : [],
+      image: imageForProduct({ ...row, category:id, category_name:name })
+    });
+  });
+  return [...byCat.values()].filter(c => c.items.length);
+}
+
+function useDynamicCategories(){
+  const [categories,setCategories]=useState(CATEGORIES);
+  useEffect(()=>{
+    let channel;
+    async function load(){
+      if(!supabase){ setCategories(CATEGORIES); return; }
+      const {data,error}=await supabase.from('menu_items').select('*').eq('active',true).order('sort_order',{ascending:true}).order('created_at',{ascending:true});
+      if(error){ console.error('Erro ao carregar menu_items:', error); setCategories(CATEGORIES); return; }
+      const built = buildCategoriesFromMenuItems(data||[]);
+      setCategories(built.length ? built : CATEGORIES);
+    }
+    load();
+    if(supabase){ channel=supabase.channel('menu-items-cardapio-public').on('postgres_changes',{event:'*',schema:'public',table:'menu_items'}, load).subscribe(); }
+    return()=>{ if(channel) supabase.removeChannel(channel); };
+  },[]);
+  return categories;
+}
+
+function buildWhatsAppMessage({customer, cart, total, deliveryFee, discount, finalTotal, payment, changeFor, coupon}){
+  const lines = [];
+  lines.push('Olá, Verbo Hub! Acabei de fazer um pedido para entrega pelo cardápio digital.');
+  lines.push('');
+  lines.push(`Cliente: ${customer.name || 'Não informado'}`);
+  if(customer.phone) lines.push(`Telefone: ${customer.phone}`);
+  if(customer.address) lines.push(`Endereço: ${customer.address}`);
+  if(customer.reference) lines.push(`Referência: ${customer.reference}`);
+  lines.push('');
+  lines.push('Pedido:');
+  cart.forEach(item => {
+    lines.push(`- ${Number(item.qty||1)}x ${item.name} — ${money(item.total)}`);
+    if(item.included?.length) lines.push(`  Inclusos: ${item.included.join(', ')}`);
+    if(item.addons?.length) lines.push(`  Extras: ${item.addons.map(a=>a.name).join(', ')}`);
+    if(item.observation) lines.push(`  Obs: ${item.observation}`);
+  });
+  lines.push('');
+  lines.push(`Subtotal: ${money(total)}`);
+  if(discount>0) lines.push(`Desconto${coupon ? ' ('+coupon+')' : ''}: -${money(discount)}`);
+  lines.push(`Entrega: ${deliveryFee ? money(deliveryFee) : 'a combinar'}`);
+  lines.push(`Total: ${money(finalTotal)}`);
+  lines.push(`Pagamento: ${payment}`);
+  if(changeFor) lines.push(`Troco para: ${changeFor}`);
+  lines.push('');
+  lines.push('Pode confirmar meu pedido?');
+  return lines.join('\n');
+}
+
 function useBestSellerToday(){
   const [best,setBest]=useState(null);
   useEffect(()=>{
@@ -127,7 +237,8 @@ function App(){
 }
 
 function ClientMenu({active,setActive,query,setQuery,setCustom,cart,setCart,total,storeStatus}){
-  const visible = useMemo(()=> CATEGORIES.map(c=>({...c, items:c.items.filter(i=>(i.name+i.desc+c.name).toLowerCase().includes(query.toLowerCase()))})).filter(c=>c.items.length), [query]);
+  const categories = useDynamicCategories();
+  const visible = useMemo(()=> categories.map(c=>({...c, items:c.items.filter(i=>(i.name+i.desc+c.name).toLowerCase().includes(query.toLowerCase()))})).filter(c=>c.items.length), [query,categories]);
   const bestSeller = useBestSellerToday();
   const heroFeatured = bestSeller || { name:'Duplo Bacon BBQ', qty:0, image:'/products/duplo-bacon-bbq.jpeg' };
   return <main className="client">
@@ -137,7 +248,7 @@ function ClientMenu({active,setActive,query,setQuery,setCustom,cart,setCart,tota
     </section>
     {!storeStatus.open && <div className="closed-banner"><b>Estamos fechados no momento.</b><span>{storeStatus.message || 'Você pode olhar o cardápio, mas a finalização está bloqueada.'}</span></div>}
     <div className="searchbar"><Search size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar burger, cuscuz, tapioca, suco..."/></div>
-    <nav className="category-tabs">{CATEGORIES.map(c=><a className={active===c.id?'on':''} href={'#'+c.id} onClick={()=>setActive(c.id)} key={c.id}><span>{c.icon}</span>{c.name}</a>)}</nav>
+    <nav className="category-tabs">{categories.map(c=><a className={active===c.id?'on':''} href={'#'+c.id} onClick={()=>setActive(c.id)} key={c.id}><span>{c.icon}</span>{c.name}</a>)}</nav>
     <div className="grid">
       <section className="menu-list">{visible.map(cat=><Category key={cat.id} cat={cat} setCustom={setCustom}/>)}</section>
       <Checkout cart={cart} setCart={setCart} total={total} setCustom={setCustom} storeStatus={storeStatus}/>
@@ -271,6 +382,11 @@ function Checkout({cart,setCart,total,setCustom,storeStatus}){
     const payload = { customer, items:cart, subtotal:total, delivery_fee:deliveryFee, discount, coupon, extra:0, total:finalTotal, payment_method:payment, change_for:changeFor, order_type:delivery, status:'novo', fiado:false, source:'verbo-hub-cardapio' };
     setSending(true);
     if(supabase){ const {error}=await supabase.from('orders').insert(payload); if(error){ alert('Erro ao salvar no Supabase: '+error.message); setSending(false); return; } }
+    if(delivery === 'entrega'){
+      const text = buildWhatsAppMessage({customer, cart, total, deliveryFee, discount, finalTotal, payment, changeFor, coupon: coupon?.code});
+      const url = `https://wa.me/5567993248754?text=${encodeURIComponent(text)}`;
+      setTimeout(()=>{ window.open(url, '_blank', 'noopener,noreferrer'); }, 250);
+    }
     setCart([]); setAppliedCoupon(null); setCouponCode(''); setCouponMessage(''); setLastOrder({ total: finalTotal, name: customer.name, when: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) }); setSending(false); setCollapsed(true);
   }
   if(collapsed) return <aside className="checkout collapsed success-card"><div className="success-icon">✓</div><h2>Pedido recebido!</h2><p>{lastOrder?.name ? `${lastOrder.name}, seu pedido foi enviado para a loja.` : 'Seu pedido foi enviado para a loja.'}</p><small>Horário: {lastOrder?.when || 'agora'} • Total: {money(lastOrder?.total || 0)}</small><button className="primary big" onClick={()=>setCollapsed(false)}><ShoppingBag/> Fazer novo pedido</button></aside>;
