@@ -385,7 +385,7 @@ function Checkout({cart,setCart,total,setCustom,storeStatus}){
     if(delivery === 'entrega'){
       const text = buildWhatsAppMessage({customer, cart, total, deliveryFee, discount, finalTotal, payment, changeFor, coupon: coupon?.code});
       const url = `https://wa.me/5567993248754?text=${encodeURIComponent(text)}`;
-      setTimeout(()=>{ window.open(url, '_blank', 'noopener,noreferrer'); }, 250);
+      window.location.href = url;
     }
     setCart([]); setAppliedCoupon(null); setCouponCode(''); setCouponMessage(''); setLastOrder({ total: finalTotal, name: customer.name, when: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) }); setSending(false); setCollapsed(true);
   }
