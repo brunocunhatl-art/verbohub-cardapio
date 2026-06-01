@@ -1,6 +1,48 @@
 export const money = (n) => Number(n||0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-const make = (category, arr) => arr.map(([id,name,price,desc,tags=[]]) => ({id,name,price,desc,category,tags}));
+export const IMAGE_BY_ID = {
+  'x-burguer':'/products/x-burguer.jpg',
+  'x-salada':'/products/x-salada.jpg',
+  'x-bacon':'/products/x-bacon.jpeg',
+  'x-egg-bacon':'/products/x-egg-bacon.jpg',
+  'duplo-bacon-bbq':'/products/duplo-bacon-bbq.jpeg',
+  'x-tudo':'/products/x-tudo.jpg',
+  'cuscuz-base':'/products/cuscuz-base.jpg',
+  'cuscuz-premium':'/products/cuscuz-premium.png',
+  'tap-frango-requeijao':'/products/tapiocas-salgadas.jpeg',
+  'tap-frango-bacon':'/products/tapiocas-salgadas.jpeg',
+  'tap-carne-calabresa':'/products/tapiocas-salgadas.jpeg',
+  'tap-carne-ovo':'/products/tapiocas-salgadas.jpeg',
+  'tap-mussarela-bacon':'/products/tapiocas-salgadas.jpeg',
+  'tap-presunto-ovo':'/products/tapiocas-salgadas.jpeg',
+  'tap-completa':'/products/tapiocas-salgadas.jpeg',
+  'tap-banana-bacon':'/products/tapiocas-salgadas.jpeg',
+  'tap-carne-seca':'/products/tapiocas-salgadas.jpeg',
+  'doce-nutella-morango':'/products/tapioca-nutella.jpg',
+  'doce-leite-coco':'/products/tapioca-leite-condensado.jpg',
+  'doce-churros':'/products/tapioca-churros.jpeg',
+  'doce-romeu':'/products/tapioca-romeu-julieta.jpg',
+  'suco-limao':'/products/sucos.jpeg',
+  'suco-laranja':'/products/sucos.jpeg',
+  'suco-abacaxi':'/products/sucos.jpeg',
+  'suco-abacaxi-hortela':'/products/sucos.jpeg',
+  'detox-1':'/products/detox.jpeg',
+  'detox-2':'/products/detox.jpeg',
+  'coca-lata':'/products/refrigerantes-lata.jpg',
+  'guarana-lata':'/products/refrigerantes-lata.jpg',
+  'fanta-lata':'/products/refrigerantes-lata.jpg',
+  'coca-1l':'/products/coca-cola-1l.jpg',
+  'guarana-1l':'/products/refrigerantes-lata.jpg',
+  'agua-gas':'/products/aguas.jpg',
+  'agua':'/products/aguas.jpg',
+  'coca-600':'/products/coca-cola-600ml.jpg',
+  'milk-choc-nutella':'/products/milkshakes.jpg',
+  'milk-morango-nutella':'/products/milkshakes.jpg',
+  'milk-chocolate':'/products/milkshakes.jpg',
+  'milk-morango':'/products/milkshakes.jpg',
+};
+
+const make = (category, arr) => arr.map(([id,name,price,desc,tags=[]]) => ({id,name,price,desc,category,tags,image:IMAGE_BY_ID[id]}));
 
 export const ADDONS = {
   burger: [

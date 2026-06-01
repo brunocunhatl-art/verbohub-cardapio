@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createClient } from '@supabase/supabase-js';
 import { BellRing, Check, ChevronRight, Gift, Minus, Plus, Printer, Search, ShoppingBag, Store, Truck, WalletCards, X, Clock, Star, Flame, BadgeCheck } from 'lucide-react';
-import { ADDONS, CATEGORIES, CUSCUZ_INCLUDED, CUSCUZ_PREMIUM_INCLUDED, flatMenu, money } from './menu';
+import { ADDONS, CATEGORIES, CUSCUZ_INCLUDED, CUSCUZ_PREMIUM_INCLUDED, flatMenu, money, IMAGE_BY_ID } from './menu';
 import './style.css';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -29,6 +29,50 @@ function useStoreStatus(){
     return()=>{ if(channel) supabase.removeChannel(channel); };
   },[]);
   return storeStatus;
+}
+
+
+function sameDayISOStart(){
+  const d = new Date();
+  d.setHours(0,0,0,0);
+  return d.toISOString();
+}
+
+function normalizeName(value){
+  return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
+}
+
+function matchMenuItemByName(name){
+  const key = normalizeName(name);
+  return flatMenu.find(p => normalizeName(p.name) === key) || flatMenu.find(p => key.includes(normalizeName(p.name)) || normalizeName(p.name).includes(key));
+}
+
+function useBestSellerToday(){
+  const [best,setBest]=useState(null);
+  useEffect(()=>{
+    let channel;
+    async function load(){
+      if(!supabase) return;
+      const {data,error}=await supabase.from('orders').select('items,status,created_at').gte('created_at', sameDayISOStart()).neq('status','cancelado');
+      if(error) return;
+      const tally = new Map();
+      (data||[]).forEach(order => (order.items||[]).forEach(item => {
+        const menuItem = matchMenuItemByName(item.name) || flatMenu.find(p => p.id === item.id);
+        const id = menuItem?.id || item.id || normalizeName(item.name);
+        const current = tally.get(id) || { id, name: menuItem?.name || item.name, qty:0, image: menuItem?.image || IMAGE_BY_ID[item.id] };
+        current.qty += Number(item.qty || item.quantity || 1);
+        tally.set(id,current);
+      }));
+      const winner = [...tally.values()].sort((a,b)=>b.qty-a.qty)[0] || null;
+      setBest(winner);
+    }
+    load();
+    if(supabase){
+      channel=supabase.channel('best-seller-cardapio').on('postgres_changes',{event:'*',schema:'public',table:'orders'}, load).subscribe();
+    }
+    return()=>{ if(channel) supabase.removeChannel(channel); };
+  },[]);
+  return best;
 }
 
 function pickUpsell(cart){
@@ -84,10 +128,12 @@ function App(){
 
 function ClientMenu({active,setActive,query,setQuery,setCustom,cart,setCart,total,storeStatus}){
   const visible = useMemo(()=> CATEGORIES.map(c=>({...c, items:c.items.filter(i=>(i.name+i.desc+c.name).toLowerCase().includes(query.toLowerCase()))})).filter(c=>c.items.length), [query]);
+  const bestSeller = useBestSellerToday();
+  const heroFeatured = bestSeller || { name:'Duplo Bacon BBQ', qty:0, image:'/products/duplo-bacon-bbq.jpeg' };
   return <main className="client">
     <section className="hero hero-pro">
       <div className="hero-copy"><span className="kicker"><BadgeCheck size={16}/> Pedido online oficial</span><h1>Peça seu Verbo Hub</h1><p>Burgers, tapiocas, cuscuz e bebidas com preparo caprichado e pedido direto para a loja.</p><div className="hero-badges"><div className={storeStatus.open?'store-pill open':'store-pill closed'}><Clock size={16}/>{storeStatus.open ? `Aberto agora • ${storeStatus.estimated_minutes} min` : 'Loja fechada'}</div><span className="mini-pill">Retirada no local</span><span className="mini-pill">Pagamento na loja</span></div></div>
-      <div className="hero-card hero-card-pro"><span className="shine">🔥 favoritos da casa</span><b>Combo perfeito</b><small>Escolha um salgado e combine com bebida ou tapioca doce no carrinho.</small></div>
+      <div className="hero-card hero-card-pro best-seller-card"><img src={heroFeatured.image} alt={heroFeatured.name}/><span className="shine">🔥 Mais pedido hoje</span><b>{heroFeatured.name}</b><small>{bestSeller ? `${bestSeller.qty} vendido${bestSeller.qty>1?'s':''} hoje` : 'Assim que entrarem pedidos, esse destaque muda sozinho.'}</small></div>
     </section>
     {!storeStatus.open && <div className="closed-banner"><b>Estamos fechados no momento.</b><span>{storeStatus.message || 'Você pode olhar o cardápio, mas a finalização está bloqueada.'}</span></div>}
     <div className="searchbar"><Search size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar burger, cuscuz, tapioca, suco..."/></div>
@@ -110,7 +156,7 @@ function Category({cat,setCustom}){
   return <section className="category" id={cat.id}>
     <div className="cat-title"><span>{cat.icon}</span><div><h2>{cat.name}</h2><small>Escolha um item para personalizar</small></div></div>
     <div className="cards">{cat.items.map(item=><article className="product product-pro" key={item.id} onClick={()=>setCustom({...item, categoryConfig:cat})}>
-      <div className="product-icon">{cat.icon}</div>
+      <div className="product-photo"><img src={item.image || '/logo-verbo-hub.png'} alt={item.name} loading="lazy"/></div>
       <div className="product-info"><div className="tag-row"><ProductBadge item={item}/>{item.tags?.map(t=><em key={t}>{t}</em>)}</div><h3>{item.name}</h3><p>{item.desc || 'Produto Verbo Hub feito com carinho.'}</p><b>{money(item.price)}</b></div>
       <button aria-label={`Adicionar ${item.name}`}><Plus size={18}/><span>Adicionar</span></button>
     </article>)}</div>
@@ -148,7 +194,7 @@ function CustomizeModal({item,close,addToCart}){
 
   return <div className="modal" role="dialog"><div className="sheet">
     <button className="close" onClick={close}><X/></button>
-    <h2>{item.name}</h2><p className="desc">{item.desc}</p><strong className="price">{money(item.price)}</strong>
+    {item.image && <img className="modal-product-image" src={item.image} alt={item.name}/>}<h2>{item.name}</h2><p className="desc">{item.desc}</p><strong className="price">{money(item.price)}</strong>
     {isPremiumCuscuz && <div className="no-addons"><b>Produto fechado.</b><br/>Acompanha carne seca, mussarela e queijo coalho. Não possui adicionais.</div>}
     {isCuscuz && <section className="custom-section"><h4>Escolha até 3 adicionais inclusos <small>{included.length}/3</small></h4><div className="chips">{includedChoices.map(x=><button className={included.includes(x)?'on':''} onClick={()=>toggleIncluded(x)} key={x}>{included.includes(x)&&<Check size={14}/>} {x}</button>)}</div><small className="hint">No cuscuz base, carne seca não entra como adicional incluso.</small></section>}
     {hasAddons && <section className="custom-section"><h4>Adicionais extras</h4>{addonGroups.map(g=><div key={g.title}><b className="group-title">{g.title}</b><div className="chips">{g.items.map(a=><button className={selectedAddons.some(x=>x.name===a.name)?'on':''} onClick={()=>toggleAddon(a)} key={a.name}>{selectedAddons.some(x=>x.name===a.name)&&<Check size={14}/>} {a.name} +{money(a.price)}</button>)}</div></div>)}</section>}
@@ -242,7 +288,7 @@ function Checkout({cart,setCart,total,setCustom,storeStatus}){
 function UpsellBox({cart,setCustom}){
   const items=pickUpsell(cart);
   if(!items.length) return null;
-  return <section className="upsell-box"><h3><Gift size={18}/> Que tal colocar mais sabor no seu pedido?</h3><p>Combina muito com o que você escolheu:</p><div className="upsell-list">{items.map(p=><button key={p.id} onClick={()=>{ const cat=CATEGORIES.find(c=>c.items.some(i=>i.id===p.id)); setCustom({...p, categoryConfig:cat}); }}><span>{p.name}</span><b>{money(p.price)}</b></button>)}</div></section>;
+  return <section className="upsell-box"><h3><Gift size={18}/> Que tal colocar mais sabor no seu pedido?</h3><p>Combina muito com o que você escolheu:</p><div className="upsell-list">{items.map(p=><button key={p.id} onClick={()=>{ const cat=CATEGORIES.find(c=>c.items.some(i=>i.id===p.id)); setCustom({...p, categoryConfig:cat}); }}><img src={p.image || '/logo-verbo-hub.png'} alt={p.name}/><span>{p.name}</span><b>{money(p.price)}</b></button>)}</div></section>;
 }
 
 function AdminPanel(){
