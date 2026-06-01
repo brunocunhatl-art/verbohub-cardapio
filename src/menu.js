@@ -40,7 +40,7 @@ export const CATEGORIES = [
     ['tap-presunto-ovo','Presunto + Mussarela + Tomate + Ovo',26.90,'Tapioca salgada recheada.'],
     ['tap-completa','Completa (Frango + Tudo) 🔥',31.90,'A queridinha da casa.'],
     ['tap-banana-bacon','Banana + Bacon + Mussarela + Canela',25.90,'Agridoce especial da casa.'],
-    ['tap-carne-seca','+ Mussarela + Queijo Coalho',37.90,'Tapioca premium.'],
+    ['tap-carne-seca','Carne Seca + Mussarela + Queijo Coalho',37.90,'Tapioca premium.'],
   ])},
   { id:'tapiocas-doces', name:'Tapiocas Doces', icon:'🍫', addons:'sweet', items: make('tapiocas-doces', [
     ['doce-nutella-morango','Nutella com Morango',19.90,''],
