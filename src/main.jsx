@@ -1,15 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createClient } from '@supabase/supabase-js';
-import { BellRing, Check, ChevronRight, Gift, Minus, Plus, Printer, Search, ShoppingBag, Store, Truck, WalletCards, X, Clock, Star, Flame, BadgeCheck } from 'lucide-react';
+import { Check, ChevronRight, Gift, Minus, Plus, Search, ShoppingBag, Truck, WalletCards, X, Clock, Star, Flame, BadgeCheck } from 'lucide-react';
 import { ADDONS, CATEGORIES, CUSCUZ_INCLUDED, CUSCUZ_PREMIUM_INCLUDED, flatMenu, money, IMAGE_BY_ID } from './menu';
 import './style.css';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
-const ADMIN_PIN = '2026';
-
 function uid(){ return crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random()); }
 
 function useStoreStatus(){
@@ -163,22 +161,16 @@ function useBestSellerToday(){
     let channel;
     async function load(){
       if(!supabase) return;
-      const {data,error}=await supabase.from('orders').select('items,status,created_at').gte('created_at', sameDayISOStart()).neq('status','cancelado');
+      const {data,error}=await supabase.rpc('get_best_seller_today');
       if(error) return;
-      const tally = new Map();
-      (data||[]).forEach(order => (order.items||[]).forEach(item => {
-        const menuItem = matchMenuItemByName(item.name) || flatMenu.find(p => p.id === item.id);
-        const id = menuItem?.id || item.id || normalizeName(item.name);
-        const current = tally.get(id) || { id, name: menuItem?.name || item.name, qty:0, image: menuItem?.image || IMAGE_BY_ID[item.id] };
-        current.qty += Number(item.qty || item.quantity || 1);
-        tally.set(id,current);
-      }));
-      const winner = [...tally.values()].sort((a,b)=>b.qty-a.qty)[0] || null;
-      setBest(winner);
+      const row = Array.isArray(data) ? data[0] : data;
+      if(!row?.name) { setBest(null); return; }
+      const matched = matchMenuItemByName(row.name) || flatMenu.find(p => p.id === row.item_id);
+      setBest({ id: row.item_id || matched?.id, name: matched?.name || row.name, qty: Number(row.qty)||0, image: imageForProduct({id: row.item_id || matched?.id, name: matched?.name || row.name, category_name: matched?.category}) });
     }
     load();
     if(supabase){
-      channel=supabase.channel('best-seller-cardapio').on('postgres_changes',{event:'*',schema:'public',table:'orders'}, load).subscribe();
+      channel=supabase.channel('best-seller-cardapio').on('postgres_changes',{event:'INSERT',schema:'public',table:'orders'}, load).subscribe();
     }
     return()=>{ if(channel) supabase.removeChannel(channel); };
   },[]);
@@ -193,9 +185,6 @@ function pickUpsell(cart){
 }
 
 function App(){
-  const [view,setView]=useState('cliente');
-  const [admin,setAdmin]=useState(false);
-  const [secretClicks,setSecretClicks]=useState(0);
   const [active,setActive]=useState(CATEGORIES[0].id);
   const [query,setQuery]=useState('');
   const [cart,setCart]=useState([]);
@@ -203,16 +192,6 @@ function App(){
   const [toast,setToast]=useState('');
   const total = cart.reduce((s,i)=>s+i.total,0);
   const storeStatus = useStoreStatus();
-
-  function openAdmin(){
-    const next = secretClicks + 1;
-    setSecretClicks(next);
-    if(next >= 5){
-      const pin = prompt('Área da loja');
-      if(pin === ADMIN_PIN){ setAdmin(true); setView('loja'); }
-      setSecretClicks(0);
-    }
-  }
 
   function addToCart(item){
     setCart(c=>[...c,item]);
@@ -222,16 +201,15 @@ function App(){
 
   return <>
     <header className="topbar">
-      <button className="brand" onClick={openAdmin} aria-label="Verbo Hub">
+      <button className="brand" aria-label="Verbo Hub">
         <img src="/logo-verbo-hub.png" alt="Verbo Hub" />
       </button>
       <div className="top-actions">
-        <button className="ghost" onClick={()=>setView('cliente')}>Cardápio</button>
-        <button className="adminBtn" onClick={()=>admin?setView('loja'):openAdmin()}><Store size={18}/> Loja</button>
+        <span className="ghost">Cardápio oficial</span>
       </div>
     </header>
     {toast && <div className="toast">{toast}</div>}
-    {view === 'loja' && admin ? <AdminPanel/> : <ClientMenu active={active} setActive={setActive} query={query} setQuery={setQuery} setCustom={setCustom} cart={cart} setCart={setCart} total={total} storeStatus={storeStatus}/>} 
+    <ClientMenu active={active} setActive={setActive} query={query} setQuery={setQuery} setCustom={setCustom} cart={cart} setCart={setCart} total={total} storeStatus={storeStatus}/>
     {custom && <CustomizeModal item={custom} close={()=>setCustom(null)} addToCart={addToCart}/>} 
   </>;
 }
@@ -244,7 +222,7 @@ function ClientMenu({active,setActive,query,setQuery,setCustom,cart,setCart,tota
   return <main className="client">
     <section className="hero hero-pro">
       <div className="hero-copy"><span className="kicker"><BadgeCheck size={16}/> Pedido online oficial</span><h1>Peça seu Verbo Hub</h1><p>Burgers, tapiocas, cuscuz e bebidas com preparo caprichado e pedido direto para a loja.</p><div className="hero-badges"><div className={storeStatus.open?'store-pill open':'store-pill closed'}><Clock size={16}/>{storeStatus.open ? `Aberto agora • ${storeStatus.estimated_minutes} min` : 'Loja fechada'}</div><span className="mini-pill">Retirada no local</span><span className="mini-pill">Pagamento na loja</span></div></div>
-      <div className="hero-card hero-card-pro best-seller-card"><img src={heroFeatured.image} alt={heroFeatured.name}/><span className="shine">🔥 Mais pedido hoje</span><b>{heroFeatured.name}</b><small>{bestSeller ? `${bestSeller.qty} vendido${bestSeller.qty>1?'s':''} hoje` : 'Assim que entrarem pedidos, esse destaque muda sozinho.'}</small></div>
+      <div className="hero-card hero-card-pro best-seller-card"><img src={heroFeatured.image} alt={heroFeatured.name}/><span className="shine">🔥 Mais pedido hoje</span><b>{heroFeatured.name}</b><small>{bestSeller ? `${bestSeller.qty} vendido${bestSeller.qty>1?'s':''} hoje` : 'Conheça alguns dos sabores favoritos do Verbo Hub.'}</small></div>
     </section>
     {!storeStatus.open && <div className="closed-banner"><b>Estamos fechados no momento.</b><span>{storeStatus.message || 'Você pode olhar o cardápio, mas a finalização está bloqueada.'}</span></div>}
     <div className="searchbar"><Search size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar burger, cuscuz, tapioca, suco..."/></div>
@@ -407,35 +385,5 @@ function UpsellBox({cart,setCustom}){
   return <section className="upsell-box"><h3><Gift size={18}/> Que tal colocar mais sabor no seu pedido?</h3><p>Combina muito com o que você escolheu:</p><div className="upsell-list">{items.map(p=><button key={p.id} onClick={()=>{ const cat=CATEGORIES.find(c=>c.items.some(i=>i.id===p.id)); setCustom({...p, categoryConfig:cat}); }}><img src={p.image || '/logo-verbo-hub.png'} alt={p.name}/><span>{p.name}</span><b>{money(p.price)}</b></button>)}</div></section>;
 }
 
-function AdminPanel(){
-  const [orders,setOrders]=useState([]);
-  const [muted,setMuted]=useState(false);
-  const lastSeen=useRef(null);
-  const audioRef=useRef(null);
-
-  async function load(){
-    if(!supabase) return;
-    const {data}=await supabase.from('orders').select('*').order('created_at',{ascending:false}).limit(100);
-    setOrders(data||[]);
-  }
-  function startAlarm(){
-    setMuted(false);
-    try { audioRef.current?.play(); } catch(e) {}
-  }
-  function stopAlarm(){
-    setMuted(true);
-    audioRef.current?.pause();
-    if(audioRef.current) audioRef.current.currentTime = 0;
-  }
-  useEffect(()=>{ load(); if(!supabase) return; const ch=supabase.channel('orders-live').on('postgres_changes',{event:'INSERT',schema:'public',table:'orders'}, payload=>{ load(); if(lastSeen.current !== payload.new.id){ lastSeen.current = payload.new.id; startAlarm(); setTimeout(()=>printOrder(payload.new), 400); }}).on('postgres_changes',{event:'UPDATE',schema:'public',table:'orders'}, load).subscribe(); return()=>supabase.removeChannel(ch); },[]);
-  async function updateStatus(id,status){ if(!supabase) return; await supabase.from('orders').update({status}).eq('id',id); load(); }
-  return <main className="admin" onClick={stopAlarm} onKeyDown={stopAlarm} tabIndex="0"><audio ref={audioRef} src="/pedido.wav" loop></audio><section className="hero"><div><span className="kicker"><BellRing size={16}/> Painel da loja</span><h1>Pedidos Verbo Hub</h1><p>Quando chegar pedido novo, toca som até alguém clicar ou tocar no painel. Também tenta imprimir automaticamente.</p></div><button className="primary" onClick={()=>window.print()}><Printer size={18}/> Imprimir tela</button></section>{!supabase && <div className="warn">Configure o Supabase no arquivo .env para sincronizar com o app anterior.</div>}{!muted && <div className="alarm"><BellRing/> Pedido novo tocando — clique em qualquer lugar para parar.</div>}<div className="orders">{orders.map(o=><article className="order" key={o.id}><header><div><b>{o.customer?.name || 'Cliente'}</b><small>{new Date(o.created_at).toLocaleString('pt-BR')}</small></div><strong>{money(o.total)}</strong></header><p>{o.customer?.phone} • {o.order_type}{o.customer?.address ? ` • ${o.customer.address}` : ''}</p>{o.items?.map(i=><div className="line" key={i.uid||i.id}>• {i.qty || 1}x {i.name} — {money(i.total || i.price)}{i.observation ? <small>Obs.: {i.observation}</small> : null}</div>)}<div className="statuses">{['novo','preparando','pronto','entregue','cancelado'].map(s=><button key={s} className={(o.status||'novo')===s?'on':''} onClick={()=>updateStatus(o.id,s)}>{s}</button>)}</div><button className="ghost print-one" onClick={()=>printOrder(o)}><Printer size={16}/> Imprimir este pedido</button></article>)}</div></main>;
-}
-
-function printOrder(o){
-  const html = `<html><head><title>Pedido Verbo Hub</title><style>body{font-family:monospace;padding:10px}.center{text-align:center}hr{border:0;border-top:1px dashed #000}.big{font-size:18px;font-weight:bold}</style></head><body><div class=center><b>VERBO HUB</b><br/>Burgers & Tapiocas</div><hr/><div class=big>Pedido: ${o.id || ''}</div><p>${new Date(o.created_at||Date.now()).toLocaleString('pt-BR')}</p><p>Cliente: ${o.customer?.name||''}<br/>Fone: ${o.customer?.phone||''}<br/>Tipo: ${o.order_type||''}<br/>${o.customer?.address?'Endereço: '+o.customer.address:''}</p><hr/>${(o.items||[]).map(i=>`<p><b>${i.qty||1}x ${i.name}</b><br/>${i.included?.length?'Inclusos: '+i.included.join(', ')+'<br/>':''}${i.addons?.length?'Extras: '+i.addons.map(a=>a.name).join(', ')+'<br/>':''}${i.observation?'Obs.: '+i.observation+'<br/>':''}${money(i.total||i.price)}</p>`).join('')}<hr/><p>Pagamento: ${o.payment_method||''}</p><div class=big>Total: ${money(o.total||0)}</div><script>window.print(); setTimeout(()=>window.close(),800)</script></body></html>`;
-  const w = window.open('', '_blank', 'width=420,height=700');
-  if(w){ w.document.write(html); w.document.close(); }
-}
 
 createRoot(document.getElementById('root')).render(<App/>);
