@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createClient } from '@supabase/supabase-js';
-import { Check, ChevronRight, Gift, Minus, Plus, Search, ShoppingBag, Truck, WalletCards, X, Clock, Star, Flame, BadgeCheck } from 'lucide-react';
+import { Check, ChevronRight, Gift, Minus, Plus, Search, ShoppingBag, Truck, WalletCards, X, Clock, Star, Flame, BadgeCheck, Store } from 'lucide-react';
 import { ADDONS, CATEGORIES, CUSCUZ_INCLUDED, CUSCUZ_PREMIUM_INCLUDED, flatMenu, money, IMAGE_BY_ID } from './menu';
 import './style.css';
 
