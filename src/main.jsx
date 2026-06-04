@@ -9,18 +9,19 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 function uid(){ return crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random()); }
+function onlyDigits(v){ return String(v || '').replace(/\D/g,''); }
 
 function useStoreStatus(){
-  const [storeStatus,setStoreStatus]=useState({open:true,estimated_minutes:25,message:'Estamos recebendo pedidos normalmente.'});
+  const [storeStatus,setStoreStatus]=useState({open:true,estimated_minutes:25,message:'Estamos recebendo pedidos normalmente.', whatsapp:'5567993248754'});
   useEffect(()=>{
     let channel;
     async function load(){
       if(!supabase) return;
       const {data}=await supabase.from('store_settings').select('*').eq('id','main').maybeSingle();
-      if(data) setStoreStatus({open:data.is_open !== false, estimated_minutes:data.estimated_minutes||25, message:data.message||''});
+      if(data) setStoreStatus({open:data.is_open !== false, estimated_minutes:data.estimated_minutes||25, message:data.message||'', whatsapp:onlyDigits(data.whatsapp_number || data.whatsapp || '5567993248754')});
       channel=supabase.channel('store-settings-cardapio').on('postgres_changes',{event:'*',schema:'public',table:'store_settings'}, payload=>{
         const row=payload.new;
-        if(row?.id==='main') setStoreStatus({open:row.is_open !== false, estimated_minutes:row.estimated_minutes||25, message:row.message||''});
+        if(row?.id==='main') setStoreStatus({open:row.is_open !== false, estimated_minutes:row.estimated_minutes||25, message:row.message||'', whatsapp:onlyDigits(row.whatsapp_number || row.whatsapp || '5567993248754')});
       }).subscribe();
     }
     load();
@@ -362,7 +363,8 @@ function Checkout({cart,setCart,total,setCustom,storeStatus}){
     if(supabase){ const {error}=await supabase.from('orders').insert(payload); if(error){ alert('Erro ao salvar no Supabase: '+error.message); setSending(false); return; } }
     if(delivery === 'entrega'){
       const text = buildWhatsAppMessage({customer, cart, total, deliveryFee, discount, finalTotal, payment, changeFor, coupon: coupon?.code});
-      const url = `https://wa.me/5567993248754?text=${encodeURIComponent(text)}`;
+      const whatsappNumber = onlyDigits(storeStatus.whatsapp || '5567993248754');
+      const url = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(text)}`;
       window.location.href = url;
     }
     setCart([]); setAppliedCoupon(null); setCouponCode(''); setCouponMessage(''); setLastOrder({ total: finalTotal, name: customer.name, when: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) }); setSending(false); setCollapsed(true);
